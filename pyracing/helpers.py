@@ -3,13 +3,13 @@ import hashlib
 import math
 import urllib.parse
 from time import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 # iRacing has all of their timestamps in ms so we need to divide
 def datetime_from_iracing_timestamp(timestamp):
     try:
-        return datetime.utcfromtimestamp(int(timestamp) / 1000)
+        return datetime.fromtimestamp(int(timestamp) / 1000, tz=timezone.utc)
     except Exception:
         return None
 
