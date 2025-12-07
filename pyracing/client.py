@@ -5,8 +5,6 @@ from pyracing.helpers import (
     encode_password,
     now_five_min_floor
 )
-
-
 from pyracing.response_objects import (
     career_stats,
     chart_data,
@@ -89,6 +87,12 @@ class Client:
                 'correct, check that a captcha is not required by manually '
                 'visiting members.iracing.com')
             raise AuthenticationError('Login Failed', auth_response)
+        elif str(auth_response.url) == ct.URL_MAINTENANCE:
+            logger.warning(
+                'The login POST request was redirected to the iRacing '
+                'maintenance page. Try again once iRacing has come '
+                'back up from maintenance.')
+            raise AuthenticationError('Login Failed', auth_response)
         else:
             logger.info('Login successful')
 
@@ -104,11 +108,10 @@ class Client:
         response = await self.session.get(
             url,
             params=params,
-            #allow_redirects=False,
+            follow_redirects=False,
             timeout=10.0
         )
 
-        #print(response.request)
         logger.info(f'Request sent for URL: {response.url}')
         logger.info(f'Status code of response: {response.status_code}')
         logger.debug(f'Contents of the response object: {response.__dict__}')
@@ -947,77 +950,122 @@ class Client:
 
         return league_data.SeasonStandings(response.json())
 
-
-    async def getCompletedSessionInfo(self, sessID):
+    async def get_completed_session_info(self, subsession_id: int):
+        """Get detailed results for a completed session.
+        
+        Args:
+            subsession_id: The iRacing subsession ID to retrieve results for.
+            
+        Returns:
+            SubSessionData object with session results, or None if request fails.
+        """
         payload = {
-                'subsessionID': sessID,
+            'subsessionID': subsession_id,
         }
-        mSite = 'https://members.iracing.com/membersite/member'
-        url = (mSite + '/GetSubsessionResults')
-        web_fb = await self._build_request(url, payload)
-        return session_data.SubSessionData(web_fb.json())
+        url = ct.URL_SUBS_RESULTS
+        response = await self._build_request(url, payload)
+        
+        if response and response.json():
+            return session_data.SubSessionData(response.json())
+        return None
 
-    async def getCalendarBySeason(self, seasonID, leagueID):
+    async def get_league_calendar_by_season(self, season_id: int, league_id: int):
+        """Get the calendar/schedule for a league season.
+        
+        Args:
+            season_id: The league season ID.
+            league_id: The league ID.
+            
+        Returns:
+            List of calendar entries for the season, or empty list if none found.
+        """
         payload = {
-                'leagueID': leagueID,
-                'leagueSeasonID': seasonID,
+            'leagueID': league_id,
+            'leagueSeasonID': season_id,
         }
-        mSite = 'https://members.iracing.com/membersite/member'
-        url = (mSite + '/GetLeagueCalendarBySeason')
-        web_fb = await self._build_request(url, payload)
-        try:
-            return web_fb.json()["rows"]
-        except:
-            return web_fb.json()
+        url = f"{ct.mSite}/GetLeagueCalendarBySeason"
+        response = await self._build_request(url, payload)
+        
+        if response and response.json():
+            data = response.json()
+            return data.get('rows', data) if isinstance(data, dict) else data
+        return []
 
-
-
-    async def getActiveSessions(self, leagueID):
+    async def get_league_active_sessions(self, league_id: int, start_row: int = 1, stop_row: int = 20):
+        """Get currently active sessions for a league.
+        
+        Args:
+            league_id: The league ID.
+            start_row: Starting row for pagination (default: 1).
+            stop_row: Ending row for pagination (default: 20).
+            
+        Returns:
+            List of active league sessions, or empty list if none found.
+        """
         payload = {
-                'ts': 0,
-                'leagueID': leagueID,
-                'startRow':1,
-                'stopRow': 20
+            'ts': 0,
+            'leagueID': league_id,
+            'startRow': start_row,
+            'stopRow': stop_row
         }
-        mSite = 'https://members.iracing.com/membersite/member'
-        url = (mSite + '/GetLeagueSessions')
-        web_fb = await self._build_request(url, payload)
-        return web_fb.json()["rows"]
+        url = f"{ct.mSite}/GetLeagueSessions"
+        response = await self._build_request(url, payload)
+        
+        if response and response.json():
+            data = response.json()
+            return data.get('rows', []) if isinstance(data, dict) else data
+        return []
 
-
-    async def get_league_members(self, leagueID):
+    async def get_league_members(self, league_id: int, lower_bound: int = 0, upper_bound: int = 100):
+        """Get members of a league.
+        
+        Args:
+            league_id: The league ID.
+            lower_bound: Starting index for pagination (default: 0).
+            upper_bound: Ending index for pagination (default: 100).
+            
+        Returns:
+            Dict containing league member data, or empty dict if request fails.
+        """
         payload = {
-                    'leagueid': leagueID,
-                    'lowerBound': 0,
-                    'upperBound': 100 
-                }                 
-        mSite = 'https://members.iracing.com/membersite/member'
-        URL_LEAGUE_MEMBERS = (mSite + '/GetLeagueMembers')
-        url = URL_LEAGUE_MEMBERS
+            'leagueid': league_id,
+            'lowerBound': lower_bound,
+            'upperBound': upper_bound
+        }
+        url = f"{ct.mSite}/GetLeagueMembers"
+        response = await self._build_request(url, payload)
+        
+        if response and response.json():
+            return response.json()
+        return {}
 
-        membersWeb = await self._build_request(url, payload)
-        return membersWeb.json()
-
-
-    async def league_seasons(self, league_id):
-        """Get the season for a league"""
-        payload = {'leagueID': league_id,
-                   'getInactiveSeasons':1
+    async def league_seasons(self, league_id: int, include_inactive: bool = True):
+        """Get the seasons for a league.
+        
+        Args:
+            league_id: The league ID.
+            include_inactive: Whether to include inactive seasons (default: True).
+            
+        Returns:
+            List of LeagueSeason objects, or empty list if none found.
+        """
+        payload = {
+            'leagueID': league_id,
+            'getInactiveSeasons': 1 if include_inactive else 0
         }
 
         url = ct.URL_LEAGUE_SEASONS
         response = await self._build_request(url, payload)
 
-        if response.json():
+        if response and response.json():
             mapping = response.json().get('m')
             response_data = response.json().get('d')
 
             if mapping and response_data:
                 response_items = response_data.get('r')
-        
+
                 if response_items:
                     renamed_items = [self._rename_numerical_keys(ri, mapping) for ri in response_items]
-                    
                     return [league_data.LeagueSeason(x) for x in renamed_items if x]
-    
+
         return []

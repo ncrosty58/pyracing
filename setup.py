@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='pyracing',
-    version='0.1.2',
+    version='0.1.5',
     author='Jacob Anderson & Xander Riga',
     description='A complete overhaul of ir_webstats; pyracing is an API '
                 'wrapper for simracing service "iRacing" that queries known '
@@ -25,5 +25,5 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     zip_safe=False,
-    install_requires=['httpx>=0.13.3,<0.14']
+    install_requires=['httpx>=0.23.0']
 )

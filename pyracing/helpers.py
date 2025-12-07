@@ -25,8 +25,6 @@ def encode_password(username, password):
     return base64Hash
 
 
-
-
 def now_five_min_floor():
     """ Takes the current time and rounds down to the nearest five minute mark
     """
